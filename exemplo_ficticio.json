@@ -1,0 +1,17 @@
+{
+  "crs": "EPSG:4326",
+  "ficticio": true,
+  "fonte": "Dados sintéticos para testar o programa; não representam vistorias reais da Lago Azul.",
+  "ocorrencias": [
+    {
+      "id": "DEMO-001",
+      "latitude": -27.2000,
+      "longitude": -52.2000,
+      "descricao": "Ponto fictício com um polígono de teste informado explicitamente.",
+      "vertices": [[-52.2005, -27.2004], [-52.1995, -27.2004], [-52.1995, -27.1996], [-52.2005, -27.1996]]
+    },
+    {"id": "DEMO-002", "latitude": -27.2020, "longitude": -52.1970, "descricao": "Segundo ponto fictício, sem área informada."},
+    {"id": "DEMO-003", "latitude": -27.2040, "longitude": -52.2040, "descricao": "Terceiro ponto fictício, sem área informada."},
+    {"id": "DEMO-ERRO", "latitude": null, "longitude": -52.2000, "descricao": "Erro intencional para demonstrar a validação."}
+  ]
+}
