@@ -1,126 +1,141 @@
-# FATECH — primeira base do gerador de mapas
+# FAtech — MVP de vistorias ambientais
 
-Protótipo Python da etapa que transforma coordenadas em mapas por ocorrência.
-Não é o sistema completo e ainda não foi integrado ao LagoForm.
+Aplicativo Android em Flutter para registrar visitas e ocorrências em campo. Cada ocorrência reúne formulário, coordenada, fotos, relatos escritos e áudios. Os pontos da visita aparecem no mapa, podem formar um envelope convexo e são exportados como KML 2.2 para conferência no QGIS.
+
+Este é um MVP de hackathon. Os dados ficam no aparelho em SQLite e arquivos privados. A API Python não possui banco e não sincroniza nem faz backup.
 
 ## O que está implementado
 
-- Leitura de um JSON com id, latitude, longitude e descrição.
-- Separação de registros inválidos, incluindo ids duplicados.
-- Conversão dos pontos WGS84 para uma projeção UTM local antes de usar metros.
-- Enquadramento geral e um PNG por ocorrência, vinculados pelo id no índice.
-- Polígono opcional somente quando os vértices são fornecidos explicitamente.
-- Base vetorial local opcional, sem precisar de internet na execução.
-- Nova pasta por lote, evitando sobrescrever saídas anteriores.
+- Visitas e múltiplas ocorrências relacionadas por UUID, com persistência SQLite local.
+- Rascunhos offline, reabertura explícita e regras de finalização com revisão humana.
+- Captura explícita do GPS atual, precisão/horário, aviso acima de 30 m e tratamento de permissão.
+- Fotos copiadas para armazenamento privado, recuperação de retorno perdido do Android e remoção individual confirmada.
+- Vários clipes M4A/AAC de até 2 minutos, reprodução, transcrição individual e preservação do texto original.
+- Formulário reduzido com sugestões revisáveis e proteção contra respostas atrasadas.
+- Mapa com pontos clicáveis, distinção entre rascunho/finalizado/demonstração e aviso quando os tiles falham.
+- Envelope convexo calculado em projeção UTM com GeoPandas/Shapely e KML UTF-8 com atributos por ocorrência.
+- Modo demonstrativo opt-in, com dados e coordenadas sempre identificados como fictícios.
 
-O exemplo contém **três ocorrências fictícias válidas e uma inválida**. Nenhuma
-delas representa uma vistoria, irregularidade ou limite real da Lago Azul.
+## Requisitos usados
 
-## Executar no Windows
+- Flutter 3.44.8 / Dart 3.12.2.
+- Android SDK disponível para o Flutter.
+- Python 3.13.2 (as dependências também devem funcionar em versões modernas compatíveis com os pacotes listados).
+- Para IA: uma chave do Gemini e um nome de modelo ao qual a conta realmente tenha acesso.
 
-Requer Python 3.10 ou superior. Na pasta do projeto, execute:
+Não é necessário Docker, PostgreSQL, Firebase ou qualquer banco remoto.
 
-```powershell
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe gerar_mapas.py exemplo_ficticio.json
-```
+## Executar o backend no Windows/PowerShell
 
-Não é necessário ativar o ambiente ou alterar a política de execução do PowerShell.
-A instalação inicial depende de internet.
-
-No Linux/macOS:
-
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python gerar_mapas.py exemplo_ficticio.json
-```
-
-Para conferir as validações e a geração depois de instalar:
+Na raiz do projeto:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest -v
+py -3 -m venv venv
+.\venv\Scripts\Activate.ps1
+python -m pip install -r .\backend\requirements.txt
+Copy-Item .\backend\.env.example .\backend\.env
+Set-Location .\backend
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-## Saída esperada
+O endpoint de saúde estará em `http://127.0.0.1:8000/health`. Ele não chama o provedor nem gasta créditos.
 
-A execução cria uma subpasta em `saidas/`, contendo:
+Por padrão, `AI_PROVIDER=disabled`: saúde e mapas funcionam, enquanto transcrição/extração retornam `AI_NOT_CONFIGURED`. Para um teste autorizado, edite `backend/.env`:
 
-| Arquivo | Conteúdo |
-| --- | --- |
-| `mapa_geral.png` | Enquadramento dos pontos e áreas informadas |
-| `ro_*.png` | Um mapa por ocorrência válida |
-| `indice.json` | Relação entre id, coordenada, descrição e arquivo |
-| `rejeitados.json` | Registros que precisam de correção, com motivo |
-| `ocorrencias.geojson` | Pontos em WGS84 para continuar trabalhando em GIS |
-| `areas_informadas.geojson` | Somente os polígonos explicitamente fornecidos, quando houver |
-
-## Como GeoPandas e Shapely entram
-
-GeoPandas organiza as ocorrências geográficas, transforma o CRS e desenha os dados.
-Shapely representa pontos, polígonos e a janela de enquadramento:
-
-```python
-from shapely.geometry import Point, Polygon, box
-
-ponto = Point(-52.2, -27.2)  # longitude primeiro, latitude depois
-# Polygon(vertices) apenas se vertices descreverem um contorno informado.
-# box(...) cria o retângulo de exibição, não uma área de irregularidade.
+```dotenv
+AI_PROVIDER=gemini
+GEMINI_API_KEY=sua-chave
+GEMINI_MODEL=nome-do-modelo-disponivel-na-sua-conta
 ```
 
-Matplotlib monta os PNGs. Não há Google Earth Engine nesta versão.
+O modelo não possui valor padrão propositalmente. Confira os modelos disponíveis para a credencial antes do teste. A chave nunca deve ser colocada no Dart, APK ou Git. A implementação usa o SDK oficial `google-genai`, áudio inline e resposta estruturada validada com Pydantic.
 
-## Colocar uma base geográfica
+O host `0.0.0.0` é apropriado somente para o teste na rede local controlada. A API não tem autenticação e não deve ser publicada aberta na internet.
 
-Sem base, o resultado é uma **prévia geométrica com grade e coordenadas**, não um
-mapa final de localização. Para incluir uma base vetorial autorizada da empresa:
+## Executar o aplicativo
+
+Em outro PowerShell, na raiz:
 
 ```powershell
-.\.venv\Scripts\python.exe gerar_mapas.py exemplo_ficticio.json --base base_local.geojson --margem 250
+flutter pub get
+flutter run
 ```
 
-O programa não inclui nem baixa uma base real. A opção `--base` aceita arquivo
-vetorial local com CRS, como GeoJSON ou GeoPackage. Não aceita imagem JPEG solta
-nem imagem de satélite nesta versão. A aparência das camadas é provisória.
+Abra o ícone de configurações no aplicativo e informe:
 
-## Cuidados que fazem parte do escopo
+- Aplicativo executado no Windows: `http://127.0.0.1:8000`.
+- Emulador Android padrão: `http://10.0.2.2:8000`.
+- Celular físico: `http://IP_DO_NOTEBOOK:8000`, usando o IPv4 mostrado pelo `ipconfig`.
 
-1. Coordenadas devem ser longitude/latitude WGS84 (`EPSG:4326`), em graus decimais.
-   Se a empresa usa outro CRS, os dados devem ser transformados corretamente;
-   apenas mudar o rótulo do CRS desloca os dados de forma incorreta.
-2. O protótipo trabalha com um lote local, com extensão máxima de 1 grau em cada
-   eixo e latitudes entre -80 e 84. Lotes maiores são recusados para revisão.
-3. As validações não detectam toda coordenada trocada ou incorreta que ainda esteja
-   em um intervalo plausível. Conferir no mapa continua necessário.
-4. A margem é medida no CRS UTM. Não é limite de propriedade nem de área afetada.
-5. Vértices devem vir na ordem do contorno, em pares `[longitude, latitude]`.
-   Polígonos inválidos são rejeitados, nunca consertados ou inferidos silenciosamente.
-6. Rótulos do mapa geral não são desenhados em massa. O índice preserva os ids.
-7. A seta indica norte da grade UTM. A barra usa metros da projeção. Ainda faltam
-   as regras de escala, camadas, legenda e diagramação aprovadas pela empresa.
-8. Descrições extensas são abreviadas apenas no PNG; o texto completo fica no índice.
+A fonte de tiles também é configurável. O padrão usa o servidor público do OpenStreetMap com atribuição e identificador do aplicativo; não use essa fonte para download massivo/offline. Ao trocar a fonte, confira e cumpra os termos e a atribuição exigida pelo provedor escolhido.
 
-## Estado dos testes nesta entrega
+No aparelho físico, notebook e celular devem estar na mesma rede. Redes com isolamento entre clientes podem bloquear a conexão. Se o Windows Firewall bloquear a porta, crie uma regra de entrada restrita à rede privada/porta 8000; não desative o firewall inteiro.
 
-As validações sem dependências geográficas foram testadas. A instalação de
-GeoPandas/Shapely foi bloqueada no ambiente de preparação; por isso, **a geração
-de mapas e os testes de integração não foram executados nem validados visualmente**.
-Os testes de integração estão incluídos e rodam depois da instalação local.
-As faixas de versões de `requirements.txt` não são um ambiente travado e validado.
+HTTP sem TLS é permitido somente no manifesto de debug. O release não reduz essa proteção.
 
-## Próximo passo com a Lago Azul
+## Fluxo de demonstração
 
-Obter um pequeno lote autorizado de coordenadas e **um mapa real já aprovado**.
-Isso permitirá adaptar a entrada do LagoForm/CSV e conferir enquadramento, base,
-escala e nomes dos arquivos. Não há importação CSV ou API do LagoForm nesta versão.
+1. Crie uma visita e abra `Nova ocorrência` em cada local observado.
+2. Capture o GPS, adicione uma foto e escreva ou grave o relato. O salvamento acontece no aparelho antes de qualquer rede.
+3. Feche e reabra o aplicativo para demonstrar a persistência.
+4. Revise e preencha manualmente mesmo offline. Com o backend/IA acessíveis, transcreva e solicite sugestões.
+5. Confirme a revisão e finalize cada ocorrência; depois conclua a visita.
+6. Abra `Mapa / KML`, toque nos marcadores, gere o contorno e compartilhe o KML.
 
-Áudio/transcrição, app móvel, banco de dados e relatórios completos continuam fora
-desta primeira base. GEE só deve entrar se uma necessidade concreta de imagens
-ou processamento geoespacial justificar essa integração.
+Para preparar rapidamente o mapa sem apresentar dados como reais, ative o modo de demonstração em Configurações e toque em `Criar visita fictícia`. As quatro ocorrências ficam marcadas como `DADO FICTÍCIO` e permanecem em rascunho, pois não têm fotos reais.
 
-## Documentação de referência
+## Conferência no QGIS
 
-- [GeoPandas: projeções e ordem longitude/latitude](https://geopandas.org/en/stable/docs/user_guide/projections.html)
-- [GeoPandas: geração de mapas](https://geopandas.org/en/stable/docs/user_guide/mapping.html)
-- [Shapely: Polygon](https://shapely.readthedocs.io/en/stable/reference/shapely.Polygon.html)
+Abra o arquivo `.kml` compartilhado e confira manualmente:
+
+1. A pasta/camada `Ocorrências` contém a mesma quantidade de pontos mostrada no app.
+2. As coordenadas estão na posição esperada e usam longitude/latitude no arquivo.
+3. Ocorrências coincidentes continuam como registros distintos.
+4. `ExtendedData` contém ID, situação, data, empreendimento, descrições, referência, origem/precisão e indicação de demonstração.
+5. `Contorno dos pontos` existe somente com três ou mais posições distintas não colineares.
+
+Fotos e áudios não acompanham o KML; ficam no armazenamento privado do app. Compartilhar KML não é backup dos demais dados.
+
+## Testes e build
+
+```powershell
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
+
+Set-Location backend
+..\venv\Scripts\python.exe -m pytest
+Set-Location ..
+
+flutter build apk --debug
+```
+
+O APK gerado fica em `build\app\outputs\flutter-apk\app-debug.apk`.
+
+Os testes Python não chamam serviços pagos. Eles cobrem os contratos de erro, IA desabilitada, evidências de sugestão, coordenadas inválidas, IDs/posições coincidentes, casos com 1/2/3 pontos, colinearidade, antimeridiano, XML/KML e uma fixture de 500 pontos. Os testes Flutter cobrem serialização/hash e persistência SQLite após reabertura.
+
+## Organização
+
+```text
+lib/
+  controllers/     estado simples das listas
+  data/            SQLite, repositório e arquivos privados
+  models/          entidades locais
+  screens/         visitas, coleta, revisão, mapa e configuração
+  services/        GPS, mídia e cliente HTTP
+  widgets/         componentes visuais pequenos
+backend/
+  app/             FastAPI, Gemini, schemas, geometria e KML
+  tests/           contratos e processamento
+```
+
+## Limitações conhecidas do MVP
+
+- Android é o único alvo validado/obrigatório; não há contas, perfis, painel web ou multiempresa.
+- Não há sincronização, backup central, integração LagoForm, relatório técnico final, PDF ou cálculo de área degradada.
+- O envelope convexo apenas envolve os pontos observados; pode conter locais não vistoriados e não é delimitação ambiental/técnica.
+- Tiles do OpenStreetMap e IA dependem de conectividade. GPS, SQLite, anexos e preenchimento manual não dependem do mapa-base.
+- Não há mapas-base offline, geocodificação, rotas, satélite, drones ou análise de fotos.
+- A gravação interrompida pelo sistema só é mantida se o plugin conseguir encerrar e produzir o arquivo; o app informa a interrupção.
+- A integração Gemini exige credencial, modelo e autorização para um teste real. Não existe resposta simulada em execução normal.
+- A abertura no QGIS e o comportamento em hardware/permissões devem ser conferidos manualmente no aparelho e ambiente da apresentação.
